@@ -57,7 +57,6 @@ def create_db(database_connection):
                                     releaseDate text,
                                     starter boolean,
                                     rulings text,
-                                    foreignNames text,
                                     originalText text,
                                     originalType text,
                                     source text,
@@ -85,6 +84,7 @@ def create_db(database_connection):
     cursor.execute("create table luLegalities (legId integer PRIMARY KEY, legalityName text);")
     cursor.execute("create table luFormats (fId integer PRIMARY KEY, formatName text);")
     cursor.execute("create table luSets (setId integer PRIMARY KEY, setName text, setCode text, setReleaseDate text);")
+    cursor.execute("create table luLanguages (langId integer PRIMARY KEY, languageName text);")
 
     #Create links tables
     cursor.execute("create table lnkCardColor (lccId integer PRIMARY KEY, cId integer, colId integer);")
@@ -96,6 +96,7 @@ def create_db(database_connection):
     cursor.execute("create table lnkLegalityFormat (llfId integer PRIMARY KEY, legId integer, fId integer);")
     cursor.execute("create table lnkCardLegFormat (lclfId integer PRIMARY KEY, cId integer, llfId integer);")
 
+    cursor.execute("create table foreignNames (fnId integer PRIMARY KEY, cId integer, langId integer, name text, multiverseid text);")
     #Create Views
     #vwFullCards big join to write later
 
@@ -103,7 +104,7 @@ def create_db(database_connection):
     return
 
 """
-Gets the value of the key from the card row. 
+Gets the value of the key from the card row.
 Params: Card row, key
 """
 def get_value_from_key(row, key):
@@ -129,7 +130,7 @@ def get_db_id(table_name, table_column_name, table_id_column, lookup_value, curs
     else:
         lookup_query = "SELECT {0} FROM {1} WHERE {2} = ?;".format(table_id_column, table_name, table_column_name)
         cursor.execute(lookup_query, (lookup_value,))
-    
+
     returned_values = cursor.fetchall()
 
     if len(returned_values) == 1:
@@ -198,7 +199,6 @@ def load_cards(json_data, db_connection):
             card_release_date = get_value_from_key(card_in_set, "releaseDate")
             card_starter = bool(get_value_from_key(card_in_set, "starter"))
             card_rulings = json.dumps(get_value_from_key(card_in_set, "rulings"))
-            card_foreign_names = json.dumps(get_value_from_key(card_in_set, "foreignNames"))
             card_original_text = get_value_from_key(card_in_set, "originalText")
             card_original_type = get_value_from_key(card_in_set, "originalType")
             card_source = get_value_from_key(card_in_set, "source")
@@ -211,13 +211,13 @@ def load_cards(json_data, db_connection):
                 card_artist, card_number, card_power, card_toughness, card_loyalty,
                 card_multiverse_id, lan_card_variations, card_image_name, card_watermark, card_border_id,
                 card_time_shifted, card_hand, card_life, card_reserved, card_release_date,
-                card_starter, card_rulings, card_foreign_names, card_original_text,
-                card_original_type, card_source, set_db_id, card_mci_id
+                card_starter, card_rulings, card_original_text, card_original_type,
+                card_source, set_db_id, card_mci_id
             ]
 
             # Insert thisCard into the database
             cursor.execute(
-                """INSERT INTO cards 
+                """INSERT INTO cards
                                     (id,
                                     layId,
                                     name,
@@ -245,13 +245,12 @@ def load_cards(json_data, db_connection):
                                     releaseDate,
                                     starter,
                                     rulings,
-                                    foreignNames,
                                     originalText,
                                     originalType,
                                     source,
                                     setId,
                                     mciNumber)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);""",
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);""",
                 card_data
             )
 
@@ -298,6 +297,15 @@ def load_cards(json_data, db_connection):
             if card_subtypes:
                 for subtype in card_subtypes:
                     cursor.execute("INSERT INTO lnkCardSubtype (cId, subtId) VALUES (?, ?);", (card_db_id, get_db_id('luSubtypes', 'subtypeName', 'subtId', subtype, cursor)))
+
+            # Link foreign names
+            card_foreign_names = get_value_from_key(card_in_set, "foreignNames")
+            if card_foreign_names:
+                for foreign_name in card_foreign_names:
+                    language = get_value_from_key(foreign_name, "language")
+                    name = get_value_from_key(foreign_name, "name")
+                    multiverseid = get_value_from_key(foreign_name, "multiverseid")
+                    cursor.execute("INSERT INTO foreignNames (cId, langId, name, multiverseid) VALUES (?, ?, ?, ?);", (card_db_id, get_db_id('luLanguages', 'languageName', 'langId', language, cursor), name, multiverseid))
 
     # Push the change and close connection
     db_connection.commit()
